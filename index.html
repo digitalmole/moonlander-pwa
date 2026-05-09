@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+        />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta
+            name="apple-mobile-web-app-status-bar-style"
+            content="black-translucent"
+        />
+        <link rel="manifest" href="manifest.json">
+        <meta name="theme-color" content="#000010">
+        <!-- Apple specific PWA support -->
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <link rel="apple-touch-icon" href="icon-192.png">
+        <title>Moonlander: Mistral Vibe</title>
+        <style>
+            body,
+            html {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background-color: #000010;
+            }
+            #game-container {
+                position: relative;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+                image-rendering: crisp-edges;
+            }
+
+        </style>
+    </head>
+    <body>
+        <div id="game-container">
+            <canvas id="game"></canvas>
+        </div>
+
+        <script>
+            /**
+             * MOONLANDER: MISTRAL VIBE EDITION
+             * A complete, self-contained PWA game.
+             */
+
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('sw.js');
+                });
+            }
+
+            // === CONFIG ===
+            const V_WIDTH = 1600;
+            const V_HEIGHT = 900;
+            const GRAVITY_BASE = 80;
+            const THRUST_FORCE = 180;
+            const ROTATE_SPEED = 120;
+            const MAX_SAFE_VERT_SPEED = 40;
+            const MAX_SAFE_HORIZ_SPEED = 30;
+            const MAX_SAFE_ANGLE = 12;
+            const FUEL_BURN_RATE = 25;
+
+            // === STATE ===
+            let gameState = "TITLE"; // TITLE, PLAYING, PAUSED, LANDED, CRASHED, GAMEOVER, NAME_ENTRY
+            let score = 0;
+            let level = 1;
+            let lives = 3;
+            let highScores = JSON.parse(localStorage.getItem("moonlander_highscores")) || [];
+            let lastTime = 0;
+            let keys = new Set();
+            let nameEntryState = {
+                text: "PLAYER",
+                cursorVisible: true,
+                lastCursorTime: 0
+            };
+            let touchZones = { left: false, thrust: false, right: false };
+            let hasKeyboard = false;
+            let lastTouchTime = 0;
+            let crashTimeout = null;
+
+            // === AUDIO ===
+            let audioCtx = null;
+            const sounds = {
+                thrust: { osc1: null, osc2: null, gain: null },
+                sideThrust: { noise: null, filter: null, gain: null },
+                explosion: null,
+                land: [],
+                ui: null,
+                fuelWarning: null,
+            };
+
+            function initAudio() {
+                if (audioCtx) {
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume();
+                    }
+                    return;
+                }
+                audioCtx = new (
+                    window.AudioContext || window.webkitAudioContext
+                )();
+            }
+
+            function playSound(type, duration = 0.1, freq = 440) {
+                if (!audioCtx) return;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = "sine";
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(
+                    0.01,
+                    audioCtx.currentTime + duration,
+                );
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            }
+
+            function startThrustSound() {
+                if (!audioCtx) return;
+                if (sounds.thrust.gain) stopThrustSound();
+
+                const bufferSize = audioCtx.sampleRate * 2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = "lowpass";
+                filter.frequency.setValueAtTime(400, audioCtx.currentTime);
+
+                sounds.thrust.osc1 = noise;
+                sounds.thrust.osc2 = filter;
+                sounds.thrust.gain = audioCtx.createGain();
+
+                sounds.thrust.gain.gain.setValueAtTime(0.225, audioCtx.currentTime);
+                noise.connect(filter);
+                filter.connect(sounds.thrust.gain);
+                sounds.thrust.gain.connect(audioCtx.destination);
+                noise.start();
+            }
+
+            function stopThrustSound() {
+                if (!sounds.thrust.gain) return;
+                const gain = sounds.thrust.gain;
+                const noise = sounds.thrust.osc1;
+                gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                sounds.thrust.gain = null;
+                sounds.thrust.osc1 = null;
+                sounds.thrust.osc2 = null;
+                setTimeout(() => { if (noise) try { noise.stop(); } catch (e) {} }, 200);
+            }
+
+            function startSideThrustSound() {
+                if (!audioCtx) return;
+                if (sounds.sideThrust.gain) stopSideThrustSound();
+
+                const bufferSize = audioCtx.sampleRate * 2;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                noise.loop = true;
+
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = "lowpass";
+                filter.frequency.setValueAtTime(600, audioCtx.currentTime); // 50% higher than 400
+
+                sounds.sideThrust.noise = noise;
+                sounds.sideThrust.filter = filter;
+                sounds.sideThrust.gain = audioCtx.createGain();
+
+                // 25% lower than 0.225 is ~0.16875
+                sounds.sideThrust.gain.gain.setValueAtTime(0.16875, audioCtx.currentTime);
+                noise.connect(filter);
+                filter.connect(sounds.sideThrust.gain);
+                sounds.sideThrust.gain.connect(audioCtx.destination);
+                noise.start();
+            }
+
+            function stopSideThrustSound() {
+                if (!sounds.sideThrust.gain) return;
+                const gain = sounds.sideThrust.gain;
+                const noise = sounds.sideThrust.noise;
+                gain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+                sounds.sideThrust.gain = null;
+                sounds.sideThrust.noise = null;
+                sounds.sideThrust.filter = null;
+                setTimeout(() => { if (noise) try { noise.stop(); } catch (e) {} }, 200);
+            }
+
+            function playExplosionSound() {
+                if (!audioCtx) return;
+                const bufferSize = audioCtx.sampleRate * 1;
+                const buffer = audioCtx.createBuffer(
+                    1,
+                    bufferSize,
+                    audioCtx.sampleRate,
+                );
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++)
+                    data[i] = Math.random() * 2 - 1;
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = "lowpass";
+                filter.frequency.setValueAtTime(400, audioCtx.currentTime);
+                const gain = audioCtx.createGain();
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(
+                    0.01,
+                    audioCtx.currentTime + 0.6,
+                );
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(audioCtx.destination);
+                noise.start();
+            }
+
+            function playLandSound() {
+                if (!audioCtx) return;
+                const freqs = [261.63, 329.63, 392.0]; // C4, E4, G4
+                freqs.forEach((f, i) => {
+                    setTimeout(() => playSound("sine", 0.2, f), i * 150);
+                });
+            }
+
+            // === TERRAIN ===
+            let terrain = [];
+            let pads = [];
+
+            function generateTerrain() {
+                terrain = [];
+                pads = [];
+                const levelMod = Math.min(level, 10);
+                const roughness = 0.45 + levelMod * 0.025;
+                const gravity = GRAVITY_BASE + levelMod * 5;
+                const fuelMax = Math.max(480, 600 - levelMod * 12);
+
+                // Midpoint displacement
+                let points = [
+                    { x: 0, y: 700 },
+                    { x: 1600, y: 700 },
+                ];
+                function subdivide(start, end, depth) {
+                    if (depth <= 0) return;
+                    const midX = (start.x + end.x) / 2;
+                    const midY =
+                        start.y +
+                        end.y +
+                        (Math.random() - 0.5) * (end.x - start.x) * roughness;
+                    const clampedY = Math.max(600, Math.min(820, midY));
+                    const mid = { x: midX, y: clampedY };
+                    points.splice(points.indexOf(end), 0, mid);
+                    subdivide(start, mid, depth - 1);
+                    subdivide(mid, end, depth - 1);
+                }
+                subdivide(points[0], points[1], 5);
+
+                // Sort and smooth
+                points.sort((a, b) => a.x - b.x);
+                for (let i = 1; i < points.length - 1; i++) {
+                    points[i].y =
+                        (points[i - 1].y + points[i].y + points[i + 1].y) / 3;
+                }
+
+                // Create terrain array
+                for (let x = 0; x <= 1600; x += 8) {
+                    let y = 700;
+                    for (let p of points) {
+                        if (x >= p.x) y = p.y;
+                    }
+                    terrain.push({ x, y });
+                }
+
+                // Place pads
+                const numPads = Math.max(1, 3 - Math.floor(levelMod / 3));
+                for (let i = 0; i < numPads; i++) {
+                    const padWidth = Math.max(50, 80 + (3 - levelMod) * 20);
+                    const padX = 100 + Math.random() * 1400;
+                    pads.push({ x: padX, width: padWidth });
+                }
+
+                // Assign pads to terrain segments
+                pads.forEach((pad) => {
+                    pad.startIndex = -1;
+                    for (let j = 0; j < terrain.length - 1; j++) {
+                        if (
+                            terrain[j].x >= pad.x &&
+                            terrain[j + 1].x <= pad.x + pad.width
+                        ) {
+                            pad.startIndex = j;
+                            break;
+                        }
+                    }
+                });
+
+                return { gravity, fuelMax };
+            }
+
+            // === PARTICLES ===
+            const MAX_PARTICLES = 300;
+            let particles = [];
+
+            function spawnParticle(x, y, vx, vy, life, color, size) {
+                if (particles.length >= MAX_PARTICLES) return;
+                particles.push({
+                    x,
+                    y,
+                    vx,
+                    vy,
+                    life,
+                    maxLife: life,
+                    color,
+                    size,
+                });
+            }
+
+            function updateParticles(dt) {
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.x += p.vx * dt;
+                    p.y += p.vy * dt;
+                    p.life -= dt;
+                    if (p.life <= 0) {
+                        particles.splice(i, 1);
+                    }
+                }
+            }
+
+            // === LANDER ===
+            let lander = {
+                x: 800,
+                y: 80,
+                vx: 0,
+                vy: 0,
+                angle: 0,
+                fuel: 600,
+                thrusting: false,
+                rotating: null,
+                alive: true,
+                landed: false,
+            };
+
+            function resetLander() {
+                lander.x = 800;
+                lander.y = 80;
+                lander.vx = (Math.random() - 0.5) * 40;
+                lander.vy = 0;
+                lander.angle = 0;
+                lander.fuel = Math.max(480, 600 - level * 12);
+                lander.alive = true;
+                lander.landed = false;
+                lander.thrusting = false;
+                lander.rotating = null;
+            }
+
+            // === INPUT ===
+            function handleInput() {
+                if (
+                    gameState === "TITLE" ||
+                    gameState === "GAMEOVER" ||
+                    gameState === "LANDED" ||
+                    gameState === "CRASHED"
+                )
+                    return;
+                if (gameState === "PAUSED") return;
+
+                lander.thrusting =
+                    keys.has("ArrowUp") ||
+                    keys.has("w") ||
+                    keys.has(" ") ||
+                    touchZones.thrust;
+                if (lander.thrusting && lander.fuel > 0) {
+                    if (!sounds.thrust.gain) startThrustSound();
+                } else {
+                    if (sounds.thrust.gain) stopThrustSound();
+                }
+
+                if (keys.has("ArrowLeft") || keys.has("a") || touchZones.left) {
+                    lander.rotating = "left";
+                    if (sounds.sideThrust.gain) {
+                        // Already playing, do nothing
+                    } else {
+                        startSideThrustSound();
+                    }
+                } else if (
+                    keys.has("ArrowRight") ||
+                    keys.has("d") ||
+                    touchZones.right
+                ) {
+                    lander.rotating = "right";
+                    if (sounds.sideThrust.gain) {
+                        // Already playing, do nothing
+                    } else {
+                        startSideThrustSound();
+                    }
+                } else {
+                    lander.rotating = null;
+                    if (sounds.sideThrust.gain) {
+                        stopSideThrustSound();
+                    }
+                }
+            }
+
+            // === PHYSICS & COLLISION ===
+            function updatePhysics(dt) {
+                if (gameState !== "PLAYING") return;
+
+                // 1. Thrust & Gravity
+                if (lander.thrusting && lander.fuel > 0) {
+                    const rad = (lander.angle * Math.PI) / 180;
+                    lander.vx += Math.sin(rad) * THRUST_FORCE * dt;
+                    lander.vy -= Math.cos(rad) * THRUST_FORCE * dt;
+                    lander.fuel -= FUEL_BURN_RATE * dt;
+
+                    // Particles
+                    for (let i = 0; i < 4; i++) {
+                        const angle = rad + (Math.random() - 0.5) * 0.5;
+                        spawnParticle(
+                            lander.x,
+                            lander.y + 15,
+                            -Math.sin(angle) * 100,
+                            Math.cos(angle) * 100,
+                            0.4,
+                            "#FF8800",
+                            3,
+                        );
+                    }
+                }
+
+                const gravity = GRAVITY_BASE + Math.min(level, 10) * 5;
+                lander.vy += gravity * dt;
+
+                // 2. Rotation & Side Thrusters
+                const rotSpeed = ROTATE_SPEED * dt;
+                if (lander.rotating === "left") {
+                    lander.angle -= rotSpeed;
+                    lander.vx += 50 * dt;
+                    for (let i = 0; i < 2; i++) {
+                        spawnParticle(lander.x - 15, lander.y + 10, -30, 40, 0.3, "#FF8800", 2);
+                    }
+                } else if (lander.rotating === "right") {
+                    lander.angle += rotSpeed;
+                    lander.vx -= 50 * dt;
+                    for (let i = 0; i < 2; i++) {
+                        spawnParticle(lander.x + 15, lander.y + 10, 30, 40, 0.3, "#FF8800", 2);
+                    }
+                }
+
+                // 3. Position
+                lander.x += lander.vx * dt;
+                lander.y += lander.vy * dt;
+
+                // 4. Bounds
+                if (lander.x < 20) {
+                    lander.x = 20;
+                    lander.vx *= -0.3;
+                }
+                if (lander.x > 1580) {
+                    lander.x = 1580;
+                    lander.vx *= -0.3;
+                }
+                if (lander.y < 0) {
+                    lander.y = 0;
+                    lander.vy *= -0.5;
+                }
+
+                // 5. Collision
+                checkCollision();
+            }
+
+            function checkCollision() {
+                const radius = 14;
+                for (let i = 0; i < terrain.length - 1; i++) {
+                    const p1 = terrain[i];
+                    const p2 = terrain[i + 1];
+
+                    // Simple segment-circle intersection (approximate)
+                    if (lander.x >= p1.x && lander.x <= p2.x) {
+                        const t = (lander.x - p1.x) / (p2.x - p1.x);
+                        const groundY = p1.y + t * (p2.y - p1.y);
+
+                        if (lander.y + radius >= groundY) {
+                            // Check if it's a pad
+                            let isPad = false;
+                            let padMultiplier = 1;
+                            for (let pad of pads) {
+                                if (
+                                    lander.x >= pad.x &&
+                                    lander.x <= pad.x + pad.width
+                                ) {
+                                    isPad = true;
+                                    if (pad.width > 100) padMultiplier = 1;
+                                    else if (pad.width > 60) padMultiplier = 2;
+                                    else padMultiplier = 3;
+                                    break;
+                                }
+                            }
+
+                            if (isPad) {
+                                const angleOk =
+                                    Math.abs(lander.angle) < MAX_SAFE_ANGLE;
+                                const speedOk =
+                                    Math.abs(lander.vx) <
+                                        MAX_SAFE_HORIZ_SPEED &&
+                                    Math.abs(lander.vy) < MAX_SAFE_VERT_SPEED;
+                                if (angleOk && speedOk) {
+                                    lander.landed = true;
+                                    gameState = "LANDED";
+                                    stopThrustSound();
+                                    stopSideThrustSound();
+                                    calculateLandingScore(padMultiplier);
+                                    playLandSound();
+                                } else {
+                                    crash();
+                                }
+                            } else {
+                                crash();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+
+            function crash() {
+                gameState = "CRASHED";
+                stopThrustSound();
+                stopSideThrustSound();
+                playExplosionSound();
+                // Explosion particles
+                for (let i = 0; i < 80; i++) {
+                    const ang = Math.random() * Math.PI * 2;
+                    const spd = 100 + Math.random() * 200;
+                    spawnParticle(
+                        lander.x,
+                        lander.y,
+                        Math.cos(ang) * spd,
+                        Math.sin(ang) * spd,
+                        1.0,
+                        "#FF2200",
+                        5,
+                    );
+                }
+                lives--;
+                crashTimeout = setTimeout(() => {
+                    if (lives <= 0) {
+                        gameState = "GAMEOVER";
+                    } else {
+                        resetLander();
+                        gameState = "PLAYING";
+                    }
+                }, 2000);
+            }
+
+            function calculateLandingScore(multiplier) {
+                let base = 100 * multiplier;
+                const fuelBonus = Math.floor(lander.fuel) * 2;
+                const levelBonus = level * 50;
+                let perfect = 0;
+                if (
+                    Math.abs(lander.angle) < 3 &&
+                    Math.abs(lander.vx) < 10 &&
+                    Math.abs(lander.vy) < 10
+                ) {
+                    perfect = 500;
+                }
+                const total =
+                    (base + fuelBonus + levelBonus + perfect) *
+                    Math.min(2, 1 + (level - 1) * 0.2);
+                score += total;
+            }
+
+            // === DRAWING ===
+            const canvas = document.getElementById("game");
+            const ctx = canvas.getContext("2d");
+
+            let scaleX = 1;
+            let scaleY = 1;
+
+            function resize() {
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = window.innerWidth * dpr;
+                canvas.height = window.innerHeight * dpr;
+                scaleX = (window.innerWidth / V_WIDTH) * dpr;
+                scaleY = (window.innerHeight / V_HEIGHT) * dpr;
+            }
+
+            function draw(dt) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // 1. Stars
+                ctx.fillStyle = "#FFFFFF";
+                for (let i = 0; i < 50; i++) {
+                    const x = (Math.sin(i * 123.4) * 0.5 + 0.5) * canvas.width;
+                    const y = (Math.cos(i * 456.7) * 0.5 + 0.5) * canvas.height;
+                    const alpha =
+                        0.3 + Math.abs(Math.sin(Date.now() * 0.001 + i)) * 0.7;
+                    ctx.globalAlpha = alpha;
+                    ctx.fillRect(x, y, 1.5, 1.5);
+                }
+                ctx.globalAlpha = 1.0;
+
+                // 2. Terrain
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height);
+                terrain.forEach((p) => ctx.lineTo(p.x * scaleX, p.y * scaleY));
+                ctx.lineTo(canvas.width, canvas.height);
+                ctx.closePath();
+                ctx.fillStyle = "#001A0A";
+                ctx.fill();
+                ctx.strokeStyle = "#00FF88";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Pads
+                pads.forEach((pad) => {
+                    ctx.beginPath();
+                    ctx.strokeStyle = "#00FFFF";
+                    ctx.lineWidth = 3;
+                    ctx.moveTo(
+                        pad.x * scaleX,
+                        terrain.find((p) => p.x >= pad.x)?.y * scaleY ||
+                            700 * scaleY,
+                    );
+                    ctx.lineTo(
+                        (pad.x + pad.width) * scaleX,
+                        terrain.find((p) => p.x >= pad.x)?.y * scaleY ||
+                            700 * scaleY,
+                    );
+                    ctx.stroke();
+                    // Lights
+                    const blink = Math.floor(Date.now() / 500) % 2 === 0;
+                    if (blink) {
+                        ctx.fillStyle = "#00FFFF";
+                        for (let i = 0; i < 3; i++) {
+                            ctx.beginPath();
+                            ctx.arc(
+                                pad.x * scaleX + (i + 1) * (pad.width / 4),
+                                terrain.find((p) => p.x >= pad.x)?.y * scaleY ||
+                                    700 * scaleY,
+                                3,
+                                0,
+                                Math.PI * 2,
+                            );
+                            ctx.fill();
+                        }
+                    }
+                });
+
+                // 3. Lander
+                if (gameState !== "TITLE" && gameState !== "GAMEOVER") {
+                    ctx.save();
+                    ctx.translate(lander.x * scaleX, lander.y * scaleY);
+                    ctx.rotate((lander.angle * Math.PI) / 180);
+
+                    // Body
+                    ctx.strokeStyle = "#00FF88";
+                    ctx.lineWidth = 2 * scaleX;
+                    ctx.beginPath();
+                    ctx.moveTo(-12 * scaleX, -10 * scaleY);
+                    ctx.lineTo(12 * scaleX, -10 * scaleY);
+                    ctx.lineTo(0, 14 * scaleY);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    // Legs
+                    ctx.lineWidth = 1.5 * scaleX;
+                    ctx.beginPath();
+                    ctx.moveTo(-10 * scaleX, 10 * scaleY);
+                    ctx.lineTo(-18 * scaleX, 20 * scaleY);
+                    ctx.moveTo(10 * scaleX, 10 * scaleY);
+                    ctx.lineTo(18 * scaleX, 20 * scaleY);
+                    ctx.stroke();
+
+                    // Cockpit
+                    ctx.fillStyle = "#003322";
+                    ctx.beginPath();
+                    ctx.arc(0, -2 * scaleY, 4 * scaleX, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Engine
+                    ctx.fillStyle = "#005544";
+                    ctx.beginPath();
+                    ctx.moveTo(-5 * scaleX, 12 * scaleY);
+                    ctx.lineTo(5 * scaleX, 12 * scaleY);
+                    ctx.lineTo(3 * scaleX, 16 * scaleY);
+                    ctx.lineTo(-3 * scaleX, 16 * scaleY);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Thrust Flame
+                    if (lander.thrusting && lander.fuel > 0) {
+                        const grad = ctx.createLinearGradient(
+                            0,
+                            16 * scaleY,
+                            0,
+                            35 * scaleY,
+                        );
+                        grad.addColorStop(0, "#FF8800");
+                        grad.addColorStop(1, "rgba(255, 255, 0, 0)");
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.moveTo(-4 * scaleX, 16 * scaleY);
+                        ctx.lineTo(4 * scaleX, 16 * scaleY);
+                        ctx.lineTo((Math.random() - 0.5) * 5, 30 * scaleY);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+
+                // 4. Particles
+                particles.forEach((p) => {
+                    ctx.fillStyle = p.color;
+                    ctx.globalAlpha = p.life / p.maxLife;
+                    ctx.beginPath();
+                    ctx.arc(
+                        p.x * scaleX,
+                        p.y * scaleY,
+                        p.size * scaleX,
+                        0,
+                        Math.PI * 2,
+                    );
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+
+                // 5. HUD
+                if (
+                    gameState === "PLAYING" ||
+                    gameState === "LANDED" ||
+                    gameState === "CRASHED"
+                ) {
+                    ctx.font = `${16 * scaleY}px monospace`;
+                    ctx.fillStyle = "#00FF88";
+
+                    // Fuel Bar
+                    const fuelX = 20 * scaleX;
+                    const fuelY = 40 * scaleY;
+                    ctx.strokeRect(fuelX, fuelY, 120 * scaleX, 15 * scaleY);
+                    let fuelColor = "#00FF88";
+                    if (lander.fuel < 15) fuelColor = "#FF2200";
+                    else if (lander.fuel < 30) fuelColor = "#FF8800";
+                    ctx.fillStyle = fuelColor;
+                    ctx.fillRect(
+                        fuelX + 2,
+                        fuelY + 2,
+                        (lander.fuel / 600) * 116 * scaleX,
+                        11 * scaleY,
+                    );
+
+                    // Stats
+                    ctx.fillText(
+                        `FUEL: ${Math.floor(lander.fuel)}`,
+                        fuelX,
+                        fuelY - 10 * scaleY,
+                    );
+                    const vSpeed = Math.abs(lander.vy).toFixed(1);
+                    ctx.fillStyle =
+                        vSpeed > MAX_SAFE_VERT_SPEED ? "#FF2200" : "#00FF88";
+                    ctx.fillText(
+                        `VERT: ${lander.vy > 0 ? "+" : ""}${lander.vy.toFixed(1)}`,
+                        fuelX,
+                        (fuelY + 35) * scaleY,
+                    );
+                    ctx.fillText(
+                        `HORIZ: ${lander.vx.toFixed(1)}`,
+                        fuelX,
+                        (fuelY + 55) * scaleY,
+                    );
+
+                    // Lives
+                    ctx.fillText(
+                        `LIVES: ${lives}`,
+                        fuelX,
+                        (fuelY + 70) * scaleY,
+                    );
+
+                    // Score & Level
+                    ctx.fillStyle = "#00FF88";
+                    ctx.textAlign = "right";
+                    ctx.fillText(
+                        `SCORE: ${score}`,
+                        (V_WIDTH - 20) * scaleX,
+                        30 * scaleY,
+                    );
+                    ctx.fillText(
+                        `LEVEL: ${level}`,
+                        (V_WIDTH - 20) * scaleX,
+                        50 * scaleY,
+                    );
+                    ctx.textAlign = "left";
+                }
+
+                // 6. Overlays
+                if (gameState === "TITLE") {
+                    ctx.textAlign = "center";
+                    ctx.font = `bold ${60 * scaleY}px monospace`;
+                    ctx.fillStyle = "#00FF88";
+                    ctx.fillText(
+                        "MOONLANDER",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT * 0.15) * scaleY,
+                    );
+                    ctx.font = `${24 * scaleY}px monospace`;
+                    ctx.fillStyle = "#00FFFF";
+                    ctx.fillText(
+                        "MISTRAL VIBE EDITION",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT * 0.22) * scaleY,
+                    );
+                    ctx.font = `${12 * scaleY}px monospace`;
+                    ctx.fillStyle = "#FF8800";
+                    ctx.fillText(
+                        "coded by gemma-4-26b-a4b-nvfp on mlx",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT * 0.26) * scaleY,
+                    );
+
+                    // High Scores List
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.font = `${18 * scaleY}px monospace`;
+                    ctx.textAlign = "center";
+                    ctx.fillText("TOP 10 HIGH SCORES", (V_WIDTH / 2) * scaleX, (V_HEIGHT * 0.35) * scaleY);
+                    
+                    ctx.font = `${14 * scaleY}px monospace`;
+                    ctx.fillStyle = "#AAAAAA";
+                    ctx.textAlign = "center";
+                    
+                    // Create a display list of 10 entries
+                    const displayList = [];
+                    for (let i = 0; i < 10; i++) {
+                        if (i < highScores.length) {
+                            displayList.push({ name: highScores[i].name, score: highScores[i].score });
+                        } else {
+                            displayList.push({ name: "VIBE", score: 0 });
+                        }
+                    }
+
+                    for (let i = 0; i < displayList.length; i++) {
+                        const yOffset = (i + 1) * (20 * scaleY);
+                        const entry = displayList[i];
+                        // Extract score directly from the object to avoid [object Object] stringification issues
+                        const currentScore = entry.score;
+                        const scoreVal = (typeof currentScore === 'number') ? currentScore.toLocaleString() : "0";
+                        const line = `${i + 1}. ${entry.name} - ${scoreVal}`;
+                        
+                        ctx.fillText(
+                            line,
+                            (V_WIDTH / 2) * scaleX,
+                            (V_HEIGHT * 0.59) + yOffset
+                        );
+                    }
+
+                    ctx.fillStyle = "#00FFFF";
+                    ctx.font = `${20 * scaleY}px monospace`;
+                    ctx.fillText(
+                        "TAP OR PRESS SPACE TO BEGIN",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT * 0.90) * scaleY,
+                    );
+                }
+
+                if (gameState === "LANDED") {
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "rgba(0,0,0,0.7)";
+                    ctx.fillRect(
+                        (V_WIDTH / 4) * scaleX,
+                        (V_HEIGHT / 3) * scaleY,
+                        (V_WIDTH / 2) * scaleX,
+                        150 * scaleY,
+                    );
+                    ctx.fillStyle = "#00FF88";
+                    ctx.font = `${30 * scaleY}px monospace`;
+                    ctx.fillText(
+                        "LANDING SUCCESSFUL",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 - 40) * scaleY,
+                    );
+                    ctx.font = `${20 * scaleY}px monospace`;
+                    ctx.fillText(
+                        `TOTAL SCORE: ${score}`,
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 + 10) * scaleY,
+                    );
+                }
+
+                if (gameState === "CRASHED") {
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#FF2200";
+                    ctx.font = `bold ${50 * scaleY}px monospace`;
+                    const displayText = lives <= 0 ? "GAME OVER" : "CRASHED";
+                    ctx.fillText(
+                        displayText,
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2) * scaleY,
+                    );
+                }
+
+                if (gameState === "GAMEOVER") {
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#FF2200";
+                    ctx.font = `bold ${60 * scaleY}px monospace`;
+                    ctx.fillText(
+                        "GAME OVER",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2) * scaleY,
+                    );
+                    ctx.fillStyle = "#00FF88";
+                    ctx.font = `${24 * scaleY}px monospace`;
+                    ctx.fillText(
+                        `FINAL SCORE: ${score}`,
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 + 50) * scaleY,
+                    );
+                    ctx.fillText(
+                        "TAP TO RESTART",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 + 100) * scaleY,
+                    );
+                }
+
+                // Touch Zones UI
+                if (!hasKeyboard && gameState === "PLAYING") {
+                    ctx.globalAlpha = 0.3;
+                    ctx.strokeStyle = "#00FF88";
+                    const w = canvas.width / 3;
+                    ctx.strokeRect(0, canvas.height - 80, w, 80);
+                    ctx.strokeRect(w, canvas.height - 80, w, 80);
+                    ctx.strokeRect(2 * w, canvas.height - 80, w, 80);
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            function loop(time) {
+                const dt = Math.min(0.05, (time - lastTime) / 1000);
+                lastTime = time;
+
+                if (gameState === "PLAYING") {
+                    handleInput();
+                    updatePhysics(dt);
+                }
+                updateParticles(dt);
+                draw(dt);
+
+                requestAnimationFrame(loop);
+            }
+
+            // === INIT & PWA ===
+            function init() {
+                resize();
+                window.addEventListener("resize", resize);
+
+                // Input Listeners
+                window.addEventListener("keydown", (e) => {
+                    initAudio();
+                    hasKeyboard = true;
+                    keys.add(e.key);
+                    if (e.key === "p" || e.key === "Escape") {
+                        if (gameState === "PLAYING") gameState = "PAUSED";
+                        else if (gameState === "PAUSED") gameState = "PLAYING";
+                    }
+                    if (
+                        ["Enter", " "].includes(e.key) &&
+                        (gameState === "TITLE" ||
+                            gameState === "LANDED" ||
+                            gameState === "GAMEOVER" ||
+                            gameState === "CRASHED")
+                    ) {
+                        if (gameState === "CRASHED") clearTimeout(crashTimeout);
+                        if (gameState === "TITLE") {
+                            level = 1;
+                            score = 0;
+                            lives = 3;
+                            generateTerrain();
+                            resetLander();
+                            gameState = "PLAYING";
+                        }
+                        if (gameState === "LANDED") {
+                            level = Math.min(10, level + 1);
+                            const config = generateTerrain();
+                            resetLander();
+                            gameState = "PLAYING";
+                        }
+                        if (gameState === "GAMEOVER" || gameState === "CRASHED") {
+                            if (gameState === "GAMEOVER") {
+                                // Only prompt for name if the score is high enough to be in the top 10
+                                const isHighScore = highScores.length < 10 || score > highScores[highScores.length - 1].score;
+
+                                if (isHighScore) {
+                                    gameState = "NAME_ENTRY";
+                                }
+                            }
+                            if (gameState === "CRASHED") {
+                                resetLander();
+                                gameState = "PLAYING";
+                            } else {
+                                gameState = "TITLE";
+                            }
+                        }
+                    }
+                });
+                window.addEventListener("keyup", (e) => keys.delete(e.key));
+
+                // Touch
+                window.addEventListener(
+                    "touchstart",
+                    (e) => {
+                        initAudio();
+                        const touch = e.touches[0];
+                        const x = touch.clientX / window.innerWidth;
+                        if (
+                            gameState === "TITLE" ||
+                            gameState === "LANDED" ||
+                            gameState === "GAMEOVER" ||
+                            gameState === "CRASHED"
+                        ) {
+                            // Advance state logic same as Enter key
+                            if (gameState === "TITLE") {
+                                level = 1;
+                                score = 0;
+                                lives = 3;
+                                generateTerrain();
+                                resetLander();
+                                gameState = "PLAYING";
+                            } else if (gameState === "LANDED") {
+                                level = Math.min(10, level + 1);
+                                generateTerrain();
+                                resetLander();
+                                gameState = "PLAYING";
+                            } else if (gameState === "CRASHED") {
+                                resetLander();
+                                gameState = "PLAYING";
+                            } else if (gameState === "GAMEOVER") {
+                                gameState = "TITLE";
+                            }
+                        } else {
+                            if (x < 0.33) touchZones.left = true;
+                            else if (x > 0.66) touchZones.right = true;
+                            else touchZones.thrust = true;
+                        }
+                    },
+                    { passive: false },
+                );
+
+                window.addEventListener("touchend", () => {
+                    touchZones.left = false;
+                    touchZones.right = false;
+                    touchZones.thrust = false;
+                });
+
+                // Start Game
+                const config = generateTerrain();
+                resetLander();
+                requestAnimationFrame(loop);
+            }
+
+            // PWA Service Worker Registration
+            const swCode = `
+    const CACHE_NAME = 'moonlander-v1';
+    self.addEventListener('install', e => {
+        e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(['./'])));
+    });
+    self.addEventListener('fetch', e => {
+        e.respondWith(caches.match(e.request).then(res => res || fetch(e.request)));
+    });
+`;
+
+            if ("serviceWorker" in navigator) {
+                const blob = new Blob([swCode], {
+                    type: "application/javascript",
+                });
+                navigator.serviceWorker.register(URL.createObjectURL(blob));
+            }
+
+            // Manifest Generation (Inline)
+            const manifest = {
+                name: "Moonlander",
+                short_name: "Moonlander",
+                display: "fullscreen",
+                orientation: "landscape",
+                background_color: "#000010",
+                theme_color: "#000010",
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {
+                type: "application/json",
+            });
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            const link = document.createElement("link");
+            link.rel = "manifest";
+            link.href = manifestURL;
+            document.head.appendChild(link);
+
+            // Start the app
+            init();
+        </script>
+    </body>
+</html>
