@@ -11,11 +11,11 @@
             name="apple-mobile-web-app-status-bar-style"
             content="black-translucent"
         />
-        <link rel="manifest" href="manifest.json">
-        <meta name="theme-color" content="#000010">
+        <link rel="manifest" href="manifest.json" />
+        <meta name="theme-color" content="#000010" />
         <!-- Apple specific PWA support -->
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <link rel="apple-touch-icon" href="icon-192.png">
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <link rel="apple-touch-icon" href="icon-192.png" />
         <title>Moonlander: Mistral Vibe</title>
         <style>
             body,
@@ -41,7 +41,6 @@
                 height: 100%;
                 image-rendering: crisp-edges;
             }
-
         </style>
     </head>
     <body>
@@ -55,9 +54,9 @@
              * A complete, self-contained PWA game.
              */
 
-            if ('serviceWorker' in navigator) {
-                window.addEventListener('load', () => {
-                    navigator.serviceWorker.register('sw.js');
+            if ("serviceWorker" in navigator) {
+                window.addEventListener("load", () => {
+                    navigator.serviceWorker.register("sw.js");
                 });
             }
 
@@ -77,13 +76,14 @@
             let score = 0;
             let level = 1;
             let lives = 3;
-            let highScores = JSON.parse(localStorage.getItem("moonlander_highscores")) || [];
+            let highScores =
+                JSON.parse(localStorage.getItem("moonlander_highscores")) || [];
             let lastTime = 0;
             let keys = new Set();
             let nameEntryState = {
                 text: "PLAYER",
                 cursorVisible: true,
-                lastCursorTime: 0
+                lastCursorTime: 0,
             };
             let touchZones = { left: false, thrust: false, right: false };
             let hasKeyboard = false;
@@ -103,7 +103,7 @@
 
             function initAudio() {
                 if (audioCtx) {
-                    if (audioCtx.state === 'suspended') {
+                    if (audioCtx.state === "suspended") {
                         audioCtx.resume();
                     }
                     return;
@@ -135,9 +135,14 @@
                 if (sounds.thrust.gain) stopThrustSound();
 
                 const bufferSize = audioCtx.sampleRate * 2;
-                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const buffer = audioCtx.createBuffer(
+                    1,
+                    bufferSize,
+                    audioCtx.sampleRate,
+                );
                 const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                for (let i = 0; i < bufferSize; i++)
+                    data[i] = Math.random() * 2 - 1;
 
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = buffer;
@@ -151,7 +156,10 @@
                 sounds.thrust.osc2 = filter;
                 sounds.thrust.gain = audioCtx.createGain();
 
-                sounds.thrust.gain.gain.setValueAtTime(0.225, audioCtx.currentTime);
+                sounds.thrust.gain.gain.setValueAtTime(
+                    0.225,
+                    audioCtx.currentTime,
+                );
                 noise.connect(filter);
                 filter.connect(sounds.thrust.gain);
                 sounds.thrust.gain.connect(audioCtx.destination);
@@ -166,7 +174,12 @@
                 sounds.thrust.gain = null;
                 sounds.thrust.osc1 = null;
                 sounds.thrust.osc2 = null;
-                setTimeout(() => { if (noise) try { noise.stop(); } catch (e) {} }, 200);
+                setTimeout(() => {
+                    if (noise)
+                        try {
+                            noise.stop();
+                        } catch (e) {}
+                }, 200);
             }
 
             function startSideThrustSound() {
@@ -174,9 +187,14 @@
                 if (sounds.sideThrust.gain) stopSideThrustSound();
 
                 const bufferSize = audioCtx.sampleRate * 2;
-                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const buffer = audioCtx.createBuffer(
+                    1,
+                    bufferSize,
+                    audioCtx.sampleRate,
+                );
                 const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                for (let i = 0; i < bufferSize; i++)
+                    data[i] = Math.random() * 2 - 1;
 
                 const noise = audioCtx.createBufferSource();
                 noise.buffer = buffer;
@@ -191,7 +209,10 @@
                 sounds.sideThrust.gain = audioCtx.createGain();
 
                 // 25% lower than 0.225 is ~0.16875
-                sounds.sideThrust.gain.gain.setValueAtTime(0.16875, audioCtx.currentTime);
+                sounds.sideThrust.gain.gain.setValueAtTime(
+                    0.16875,
+                    audioCtx.currentTime,
+                );
                 noise.connect(filter);
                 filter.connect(sounds.sideThrust.gain);
                 sounds.sideThrust.gain.connect(audioCtx.destination);
@@ -206,7 +227,12 @@
                 sounds.sideThrust.gain = null;
                 sounds.sideThrust.noise = null;
                 sounds.sideThrust.filter = null;
-                setTimeout(() => { if (noise) try { noise.stop(); } catch (e) {} }, 200);
+                setTimeout(() => {
+                    if (noise)
+                        try {
+                            noise.stop();
+                        } catch (e) {}
+                }, 200);
             }
 
             function playExplosionSound() {
@@ -458,13 +484,29 @@
                     lander.angle -= rotSpeed;
                     lander.vx += 50 * dt;
                     for (let i = 0; i < 2; i++) {
-                        spawnParticle(lander.x - 15, lander.y + 10, -30, 40, 0.3, "#FF8800", 2);
+                        spawnParticle(
+                            lander.x - 15,
+                            lander.y + 10,
+                            -30,
+                            40,
+                            0.3,
+                            "#FF8800",
+                            2,
+                        );
                     }
                 } else if (lander.rotating === "right") {
                     lander.angle += rotSpeed;
                     lander.vx -= 50 * dt;
                     for (let i = 0; i < 2; i++) {
-                        spawnParticle(lander.x + 15, lander.y + 10, 30, 40, 0.3, "#FF8800", 2);
+                        spawnParticle(
+                            lander.x + 15,
+                            lander.y + 10,
+                            30,
+                            40,
+                            0.3,
+                            "#FF8800",
+                            2,
+                        );
                     }
                 }
 
@@ -589,7 +631,7 @@
                 const total =
                     (base + fuelBonus + levelBonus + perfect) *
                     Math.min(2, 1 + (level - 1) * 0.2);
-                score += total;
+                score += Math.round(total);
             }
 
             // === DRAWING ===
@@ -821,55 +863,66 @@
                     ctx.fillText(
                         "MOONLANDER",
                         (V_WIDTH / 2) * scaleX,
-                        (V_HEIGHT * 0.15) * scaleY,
+                        V_HEIGHT * 0.15 * scaleY,
                     );
                     ctx.font = `${24 * scaleY}px monospace`;
                     ctx.fillStyle = "#00FFFF";
                     ctx.fillText(
                         "MISTRAL VIBE EDITION",
                         (V_WIDTH / 2) * scaleX,
-                        (V_HEIGHT * 0.22) * scaleY,
+                        V_HEIGHT * 0.22 * scaleY,
                     );
                     ctx.font = `${12 * scaleY}px monospace`;
                     ctx.fillStyle = "#FF8800";
                     ctx.fillText(
                         "coded by gemma-4-26b-a4b-nvfp on mlx",
                         (V_WIDTH / 2) * scaleX,
-                        (V_HEIGHT * 0.26) * scaleY,
+                        V_HEIGHT * 0.26 * scaleY,
                     );
 
                     // High Scores List
                     ctx.fillStyle = "#FFFFFF";
                     ctx.font = `${18 * scaleY}px monospace`;
                     ctx.textAlign = "center";
-                    ctx.fillText("TOP 10 HIGH SCORES", (V_WIDTH / 2) * scaleX, (V_HEIGHT * 0.35) * scaleY);
-                    
+                    const highScoreTitleY = V_HEIGHT * 0.35 * scaleY;
+                    ctx.fillText(
+                        "TOP 10 HIGH SCORES",
+                        (V_WIDTH / 2) * scaleX,
+                        highScoreTitleY,
+                    );
+
                     ctx.font = `${14 * scaleY}px monospace`;
                     ctx.fillStyle = "#AAAAAA";
                     ctx.textAlign = "center";
-                    
+
                     // Create a display list of 10 entries
                     const displayList = [];
                     for (let i = 0; i < 10; i++) {
                         if (i < highScores.length) {
-                            displayList.push({ name: highScores[i].name, score: highScores[i].score });
+                            displayList.push({
+                                name: highScores[i].name,
+                                score: highScores[i].score,
+                            });
                         } else {
-                            displayList.push({ name: "VIBE", score: 0 });
+                            displayList.push({ name: "PLAYER", score: 0 });
                         }
                     }
 
                     for (let i = 0; i < displayList.length; i++) {
-                        const yOffset = (i + 1) * (20 * scaleY);
+                        const yOffset = (i + 1) * (25 * scaleY);
                         const entry = displayList[i];
                         // Extract score directly from the object to avoid [object Object] stringification issues
                         const currentScore = entry.score;
-                        const scoreVal = (typeof currentScore === 'number') ? currentScore.toLocaleString() : "0";
+                        const scoreVal =
+                            typeof currentScore === "number"
+                                ? currentScore.toLocaleString()
+                                : "0";
                         const line = `${i + 1}. ${entry.name} - ${scoreVal}`;
-                        
+
                         ctx.fillText(
                             line,
                             (V_WIDTH / 2) * scaleX,
-                            (V_HEIGHT * 0.59) + yOffset
+                            highScoreTitleY + 40 * scaleY + yOffset,
                         );
                     }
 
@@ -878,7 +931,7 @@
                     ctx.fillText(
                         "TAP OR PRESS SPACE TO BEGIN",
                         (V_WIDTH / 2) * scaleX,
-                        (V_HEIGHT * 0.90) * scaleY,
+                        V_HEIGHT * 0.9 * scaleY,
                     );
                 }
 
@@ -1003,10 +1056,16 @@
                             resetLander();
                             gameState = "PLAYING";
                         }
-                        if (gameState === "GAMEOVER" || gameState === "CRASHED") {
+                        if (
+                            gameState === "GAMEOVER" ||
+                            gameState === "CRASHED"
+                        ) {
                             if (gameState === "GAMEOVER") {
                                 // Only prompt for name if the score is high enough to be in the top 10
-                                const isHighScore = highScores.length < 10 || score > highScores[highScores.length - 1].score;
+                                const isHighScore =
+                                    highScores.length < 10 ||
+                                    score >
+                                        highScores[highScores.length - 1].score;
 
                                 if (isHighScore) {
                                     gameState = "NAME_ENTRY";
