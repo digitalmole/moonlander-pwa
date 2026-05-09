@@ -4,7 +4,7 @@ This game was coded with Mistal Vibe and a Gemma-4-26b-a4b-nvfp4 model on a 32GB
 
 Claude chat was asked to write a prompt to write a HTML PWA moonlander game. That prompt was then used to generate the first draft. I tried several AI models in nvfp4. Gemma-4-26b-a4b gave the best first result from the claude prompt. I tried Qwen3.6 27b, Qwen3.6-35b-a3b, Qwen3-coder-30b-a3b and Gemma-4-31b. They all generated html that gave black screens without anything working.
 
-Gemma-4 did quite wel. The game was playable though sound and more details were missing. Corrective prompts were given to add missing implementations details and fix bugs. Next additional features were asked. At no point directive code change instructions were given. Only more general instructions like 'stop thruster sound when landed' too see how far the llm would bring me without getting involved.
+Gemma-4 did quite wel. The game was playable though sound and more details were missing. Corrective prompts were given to add missing implementations details and fix bugs. Next additional features were asked. At no point directive code change instructions were given. Only more general instructions like 'stop thruster sound when landed' too see how far the llm would bring me without getting involved as a programmer. 
 
 The Claude prompt that started this was:
 
