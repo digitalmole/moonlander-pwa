@@ -640,7 +640,10 @@
                 if (highScores.length > 10) {
                     highScores.pop();
                 }
-                localStorage.setItem("moonlander_highscores", JSON.stringify(highScores));
+                localStorage.setItem(
+                    "moonlander_highscores",
+                    JSON.stringify(highScores),
+                );
             }
 
             // === DRAWING ===
@@ -996,10 +999,43 @@
                         (V_WIDTH / 2) * scaleX,
                         (V_HEIGHT / 2 + 50) * scaleY,
                     );
+
+                    const isHighScore =
+                        highScores.length < 10 ||
+                        score > highScores[highScores.length - 1].score;
+
                     ctx.fillText(
-                        "TAP TO RESTART",
+                        isHighScore
+                            ? "TAP OR PRESS SPACE"
+                            : "TAP OR PRESS SPACE TO RESTART",
                         (V_WIDTH / 2) * scaleX,
                         (V_HEIGHT / 2 + 100) * scaleY,
+                    );
+                }
+
+                if (gameState === "NAME_ENTRY") {
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = "#00FF88";
+                    ctx.font = `${24 * scaleY}px monospace`;
+                    ctx.fillText(
+                        "ENTER NAME",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 - 60) * scaleY,
+                    );
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.font = `bold ${40 * scaleY}px monospace`;
+                    const displayText = nameEntryState.text || "__________";
+                    ctx.fillText(
+                        displayText,
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2) * scaleY,
+                    );
+                    ctx.fillStyle = "#00FF88";
+                    ctx.font = `${18 * scaleY}px monospace`;
+                    ctx.fillText(
+                        "PRESS ENTER TO SAVE",
+                        (V_WIDTH / 2) * scaleX,
+                        (V_HEIGHT / 2 + 60) * scaleY,
                     );
                 }
 
@@ -1043,7 +1079,24 @@
                         if (gameState === "PLAYING") gameState = "PAUSED";
                         else if (gameState === "PAUSED") gameState = "PLAYING";
                     }
-                    if (
+                    // 1. Handle NAME_ENTRY separately so all keys work
+                    if (gameState === "NAME_ENTRY") {
+                        if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
+                            nameEntryState.text = (nameEntryState.text + e.key)
+                                .toUpperCase()
+                                .slice(-10);
+                        } else if (e.key === "Backspace") {
+                            nameEntryState.text = nameEntryState.text.slice(
+                                0,
+                                -1,
+                            );
+                        } else if (e.key === "Enter") {
+                            saveHighScore(nameEntryState.text || "__________");
+                            gameState = "TITLE";
+                        }
+                    }
+                    // 2. Handle other states that only respond to Enter/Space
+                    else if (
                         ["Enter", " "].includes(e.key) &&
                         (gameState === "TITLE" ||
                             gameState === "LANDED" ||
@@ -1065,38 +1118,20 @@
                             resetLander();
                             gameState = "PLAYING";
                         }
-                        if (
-                            gameState === "GAMEOVER" ||
-                            gameState === "CRASHED"
-                        ) {
-                            if (gameState === "GAMEOVER") {
-                                // Only prompt for name if the score is high enough to be in the top 10
-                                const isHighScore =
-                                    highScores.length < 10 ||
-                                    score >
-                                        highScores[highScores.length - 1].score;
+                        if (gameState === "GAMEOVER") {
+                            const isHighScore =
+                                highScores.length < 10 ||
+                                score > highScores[highScores.length - 1].score;
 
-                                if (isHighScore) {
-                                    gameState = "NAME_ENTRY";
-                                }
-                            }
-                            if (gameState === "NAME_ENTRY") {
-                                // Handle name entry character input
-                                if (e.key.length === 1 && e.key.match(/[a-zA-Z]/)) {
-                                    nameEntryState.text = (nameEntryState.text + e.key).toUpperCase().slice(-10);
-                                } else if (e.key === "Backspace") {
-                                    nameEntryState.text = nameEntryState.text.slice(0, -1);
-                                } else if (e.key === "Enter") {
-                                    saveHighScore(nameEntryState.text || "PLAYER");
-                                    gameState = "TITLE";
-                                }
-                            }
-                            if (gameState === "CRASHED") {
-                                resetLander();
-                                gameState = "PLAYING";
+                            if (isHighScore) {
+                                nameEntryState.text = "";
+                                gameState = "NAME_ENTRY";
                             } else {
                                 gameState = "TITLE";
                             }
+                        } else if (gameState === "CRASHED") {
+                            resetLander();
+                            gameState = "PLAYING";
                         }
                     }
                 });
