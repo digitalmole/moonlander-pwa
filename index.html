@@ -35,6 +35,7 @@
                 justify-content: center;
                 align-items: center;
             }
+
             canvas {
                 display: block;
                 width: 100%;
@@ -279,7 +280,7 @@
                 terrain = [];
                 pads = [];
                 const levelMod = Math.min(level, 10);
-                const roughness = 0.45 + levelMod * 0.025;
+                const roughness = 0.6 + levelMod * 0.15;
                 const gravity = GRAVITY_BASE + levelMod * 5;
                 const fuelMax = Math.max(480, 600 - levelMod * 12);
 
@@ -295,7 +296,12 @@
                         start.y +
                         end.y +
                         (Math.random() - 0.5) * (end.x - start.x) * roughness;
-                    const clampedY = Math.max(600, Math.min(820, midY));
+
+                    // Vary vertical range based on level to change "look"
+                    const minY = 500 - levelMod * 10;
+                    const maxY = 850 + levelMod * 5;
+                    const clampedY = Math.max(minY, Math.min(maxY, midY));
+
                     const mid = { x: midX, y: clampedY };
                     points.splice(points.indexOf(end), 0, mid);
                     subdivide(start, mid, depth - 1);
@@ -666,7 +672,7 @@
 
                 // 1. Stars
                 ctx.fillStyle = "#FFFFFF";
-                for (let i = 0; i < 50; i++) {
+                for (let i = 0; i < 250; i++) {
                     const x = (Math.sin(i * 123.4) * 0.5 + 0.5) * canvas.width;
                     const y = (Math.cos(i * 456.7) * 0.5 + 0.5) * canvas.height;
                     const alpha =
@@ -682,17 +688,17 @@
                 terrain.forEach((p) => ctx.lineTo(p.x * scaleX, p.y * scaleY));
                 ctx.lineTo(canvas.width, canvas.height);
                 ctx.closePath();
-                ctx.fillStyle = "#001A0A";
+                ctx.fillStyle = "#D3D3D3";
                 ctx.fill();
-                ctx.strokeStyle = "#00FF88";
+                ctx.strokeStyle = "#404040";
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
                 // Pads
                 pads.forEach((pad) => {
                     ctx.beginPath();
-                    ctx.strokeStyle = "#00FFFF";
-                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = "#808080";
+                    ctx.lineWidth = 15;
                     ctx.moveTo(
                         pad.x * scaleX,
                         terrain.find((p) => p.x >= pad.x)?.y * scaleY ||
@@ -707,14 +713,14 @@
                     // Lights
                     const blink = Math.floor(Date.now() / 500) % 2 === 0;
                     if (blink) {
-                        ctx.fillStyle = "#00FFFF";
+                        ctx.fillStyle = "#FFA500";
                         for (let i = 0; i < 3; i++) {
                             ctx.beginPath();
                             ctx.arc(
                                 pad.x * scaleX + (i + 1) * (pad.width / 4),
                                 terrain.find((p) => p.x >= pad.x)?.y * scaleY ||
                                     700 * scaleY,
-                                3,
+                                4,
                                 0,
                                 Math.PI * 2,
                             );
@@ -813,7 +819,11 @@
                     // Fuel Bar
                     const fuelX = 20 * scaleX;
                     const fuelY = 40 * scaleY;
+                    ctx.lineWidth = 1 * scaleX;
+                    ctx.strokeStyle = "#003322";
                     ctx.strokeRect(fuelX, fuelY, 120 * scaleX, 15 * scaleY);
+                    ctx.lineWidth = 2 * scaleX;
+                    ctx.strokeStyle = "#00FF88";
                     let fuelColor = "#00FF88";
                     if (lander.fuel < 15) fuelColor = "#FF2200";
                     else if (lander.fuel < 30) fuelColor = "#FF8800";
