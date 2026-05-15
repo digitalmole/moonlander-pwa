@@ -806,6 +806,7 @@
                     gameState === "LANDED" ||
                     gameState === "CRASHED"
                 ) {
+                    ctx.textAlign = "left";
                     ctx.font = `${16 * scaleY}px monospace`;
                     ctx.fillStyle = "#00FF88";
 
@@ -834,19 +835,19 @@
                     ctx.fillStyle =
                         vSpeed > MAX_SAFE_VERT_SPEED ? "#FF2200" : "#00FF88";
                     ctx.fillText(
-                        `VERT: ${lander.vy > 0 ? "+" : ""}${lander.vy.toFixed(1)}`,
+                        `VERT  : ${lander.vy > 0 ? "+" : ""}${lander.vy.toFixed(1)}`,
                         fuelX,
                         (fuelY + 35) * scaleY,
                     );
                     ctx.fillText(
-                        `HORIZ: ${lander.vx.toFixed(1)}`,
+                        `HORIZ : ${lander.vx.toFixed(1)}`,
                         fuelX,
                         (fuelY + 55) * scaleY,
                     );
 
                     // Lives
                     ctx.fillText(
-                        `LIVES: ${lives}`,
+                        `LIVES : ${lives}`,
                         fuelX,
                         (fuelY + 70) * scaleY,
                     );
