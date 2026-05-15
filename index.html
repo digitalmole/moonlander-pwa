@@ -735,38 +735,78 @@
                     ctx.translate(lander.x * scaleX, lander.y * scaleY);
                     ctx.rotate((lander.angle * Math.PI) / 180);
 
-                    // Body
+                    // Body (Segmented)
                     ctx.strokeStyle = "#00FF88";
+                    ctx.fillStyle = "#002211";
                     ctx.lineWidth = 2 * scaleX;
                     ctx.beginPath();
-                    ctx.moveTo(-12 * scaleX, -10 * scaleY);
-                    ctx.lineTo(12 * scaleX, -10 * scaleY);
-                    ctx.lineTo(0, 14 * scaleY);
+                    ctx.moveTo(-10 * scaleX, -12 * scaleY);
+                    ctx.lineTo(10 * scaleX, -12 * scaleY);
+                    ctx.lineTo(8 * scaleX, 0);
+                    ctx.lineTo(12 * scaleX, 12 * scaleY);
+                    ctx.lineTo(-12 * scaleX, 12 * scaleY);
+                    ctx.lineTo(-8 * scaleX, 0);
                     ctx.closePath();
+                    ctx.fill();
                     ctx.stroke();
 
-                    // Legs
-                    ctx.lineWidth = 1.5 * scaleX;
+                    // Cockpit Window
+                    ctx.fillStyle = "#00FFFF";
                     ctx.beginPath();
-                    ctx.moveTo(-10 * scaleX, 10 * scaleY);
-                    ctx.lineTo(-18 * scaleX, 20 * scaleY);
-                    ctx.moveTo(10 * scaleX, 10 * scaleY);
-                    ctx.lineTo(18 * scaleX, 20 * scaleY);
-                    ctx.stroke();
-
-                    // Cockpit
-                    ctx.fillStyle = "#003322";
+                    ctx.arc(0, -6 * scaleY, 4 * scaleX, Math.PI, 0);
+                    ctx.fill();
+                    // Window Highlight
+                    ctx.fillStyle = "rgba(255,255,255,0.5)";
                     ctx.beginPath();
-                    ctx.arc(0, -2 * scaleY, 4 * scaleX, 0, Math.PI * 2);
+                    ctx.arc(
+                        -1.5 * scaleX,
+                        -7 * scaleY,
+                        1 * scaleX,
+                        0,
+                        Math.PI * 2,
+                    );
                     ctx.fill();
 
-                    // Engine
-                    ctx.fillStyle = "#005544";
+                    // Landing Gear (Struts + Feet)
+                    ctx.strokeStyle = "#00FF88";
+                    ctx.lineWidth = 1.5 * scaleX;
+                    // Left leg
                     ctx.beginPath();
-                    ctx.moveTo(-5 * scaleX, 12 * scaleY);
-                    ctx.lineTo(5 * scaleX, 12 * scaleY);
-                    ctx.lineTo(3 * scaleX, 16 * scaleY);
-                    ctx.lineTo(-3 * scaleX, 16 * scaleY);
+                    ctx.moveTo(-6 * scaleX, 8 * scaleY);
+                    ctx.lineTo(-16 * scaleX, 18 * scaleY);
+                    ctx.stroke();
+                    ctx.fillStyle = "#00FF88";
+                    ctx.fillRect(
+                        -20 * scaleX,
+                        18 * scaleY,
+                        8 * scaleX,
+                        3 * scaleY,
+                    );
+                    // Right leg
+                    ctx.beginPath();
+                    ctx.moveTo(6 * scaleX, 8 * scaleY);
+                    ctx.lineTo(16 * scaleX, 18 * scaleY);
+                    ctx.stroke();
+                    ctx.fillRect(
+                        12 * scaleX,
+                        18 * scaleY,
+                        8 * scaleX,
+                        3 * scaleY,
+                    );
+
+                    // Antenna
+                    ctx.beginPath();
+                    ctx.moveTo(0, -12 * scaleY);
+                    ctx.lineTo(0, -20 * scaleY);
+                    ctx.stroke();
+
+                    // Engine Nozzle
+                    ctx.fillStyle = "#444";
+                    ctx.beginPath();
+                    ctx.moveTo(-4 * scaleX, 12 * scaleY);
+                    ctx.lineTo(4 * scaleX, 12 * scaleY);
+                    ctx.lineTo(3 * scaleX, 15 * scaleY);
+                    ctx.lineTo(-3 * scaleX, 15 * scaleY);
                     ctx.closePath();
                     ctx.fill();
 
