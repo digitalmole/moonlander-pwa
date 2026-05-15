@@ -100,6 +100,7 @@
                 land: [],
                 ui: null,
                 fuelWarning: null,
+                sad: null,
             };
 
             function initAudio() {
@@ -269,6 +270,14 @@
                 const freqs = [261.63, 329.63, 392.0]; // C4, E4, G4
                 freqs.forEach((f, i) => {
                     setTimeout(() => playSound("sine", 0.2, f), i * 150);
+                });
+            }
+
+            function playSadSound() {
+                if (!audioCtx) return;
+                const freqs = [220, 196, 174]; // A3, G3, F3 (descending)
+                freqs.forEach((f, i) => {
+                    setTimeout(() => playSound("sine", 0.8, f), i * 400);
                 });
             }
 
@@ -521,17 +530,13 @@
                 lander.y += lander.vy * dt;
 
                 // 4. Bounds
-                if (lander.x < 20) {
-                    lander.x = 20;
-                    lander.vx *= -0.3;
-                }
-                if (lander.x > 1580) {
-                    lander.x = 1580;
-                    lander.vx *= -0.3;
-                }
-                if (lander.y < 0) {
-                    lander.y = 0;
-                    lander.vy *= -0.5;
+                if (
+                    lander.x < -50 ||
+                    lander.x > 1650 ||
+                    lander.y < -50 ||
+                    lander.y > 950
+                ) {
+                    crash("lost");
                 }
 
                 // 5. Collision
@@ -592,11 +597,16 @@
                 }
             }
 
-            function crash() {
+            function crash(reason = "explosion") {
                 gameState = "CRASHED";
+                crashReason = reason;
                 stopThrustSound();
                 stopSideThrustSound();
-                playExplosionSound();
+                if (reason === "lost") {
+                    playSadSound();
+                } else {
+                    playExplosionSound();
+                }
                 // Explosion particles
                 for (let i = 0; i < 80; i++) {
                     const ang = Math.random() * Math.PI * 2;
@@ -1024,9 +1034,11 @@
 
                 if (gameState === "CRASHED") {
                     ctx.textAlign = "center";
-                    ctx.fillStyle = "#FF2200";
+                    ctx.fillStyle =
+                        crashReason === "lost" ? "#00FFFF" : "#FF2200";
                     ctx.font = `bold ${50 * scaleY}px monospace`;
-                    const displayText = lives <= 0 ? "GAME OVER" : "CRASHED";
+                    const displayText =
+                        crashReason === "lost" ? "LOST IN SPACE" : "CRASHED";
                     ctx.fillText(
                         displayText,
                         (V_WIDTH / 2) * scaleX,
@@ -1154,6 +1166,7 @@
                             gameState === "GAMEOVER" ||
                             gameState === "CRASHED")
                     ) {
+                        if (gameState === "CRASHED" && lives <= 0) return;
                         if (gameState === "CRASHED") clearTimeout(crashTimeout);
                         if (gameState === "TITLE") {
                             level = 1;
@@ -1202,6 +1215,7 @@
                             gameState === "CRASHED"
                         ) {
                             // Advance state logic same as Enter key
+                            if (gameState === "CRASHED" && lives <= 0) return;
                             if (gameState === "TITLE") {
                                 level = 1;
                                 score = 0;
